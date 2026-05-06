@@ -1,31 +1,11 @@
-
-# !!! NOTICE !!!
-
-- The submission workflow is similar to Phase 1, but please note that the submission and output interfaces have changed:
-
-  * `/submit` -> `/submit2`
-  * `/outputs` -> `/outputs2`
-  * `/submit_status` remains unchanged
-
-- No `/submit-test` is provided. You can use the deepseek api key in `/submit2` now, or just use your own api key. 
-
-- Your submission file name is also changed:
-  * `/workspace/report.*` -> `/workspace/report2.*`
-  * `/workspace/output_id.txt` -> `/workspace/output_id2.txt`
-
-
-- The evaluation system will run your agent first. After your agent finishes or times out, the system will collect the generated:
-
-```bash
-/workspace/optimized_lora.cu
-```
+This is a very rudimentary agent implementation. It does not provide modularization between the agent and the tools, and the implementations of its various functions are highly coupled. It is provided for reference only. The submission channel will open later on April 14.
 
 # Submit Your Agent
 
-Please follow the instructions in `gpu_service_guide.md` to upload your code to the server at `10.176.37.31`. This server may also be used for development, but if other servers still have available GPUs, please do not use this one for development for the time being.
+Please follow the instructions in `gpu_service_guide.md` to upload your code to the server at `10.176.37.34`. This server may also be used for development, but if other servers still have available GPUs, please do not use this one for development for the time being.
 
 
-If you have prepared your code in your workspace, you can use `/submit2` to run it in the evaluation container.
+If you have prepared your code in your workspace, you can use `/submit` to run it in the evaluation container.
 
 ## Before you submit
 
@@ -48,29 +28,21 @@ In general, our evaluation environment already includes common packages, includi
 pip3 install <your_package> -i --default-timeout 0.3 https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple
 ```
 
-Your agent must generate a cuda file and place it at 
+Your agent should read the evaluation target specification from:
 
 ```bash
-/workspace/optimized_lora.cu
+/target/target_spec.json
 ```
 
-See the details about this output at https://memxlife.github.io/books/mlsys/project_phase2.html
-
-Your agent may generate a report file and place it at 
+Your agent should generate a report file and place it at 
 ```bash
 /workspace/output.*
 ``` 
-This file is used to evaluate your agent's reasoning process and optimization methodology.
-The file format is not restricted.
-Only one such file should be generated.
-It may contain your agent's search process, candidate comparison, profiling results, benchmark logs, design choices, or final summary.
-
+The file format is not restricted, but **only one** such file should be generated.
 
 ### 2. Model/API interface requirement
 
-You may use **your own API key** for your agent.
-
-If you do not specify your own API configuration, the evaluation environment will provide a default DeepSeek API interface through environment variables.
+Your agent should expose the model interface through environment variables, so that we can inject the model and API credentials used in evaluation.
 
 The following environment variables may be provided:
 
@@ -78,6 +50,7 @@ The following environment variables may be provided:
 * `BASE_MODEL`
 * `BASE_URL`
 
+If you use your own API key, you do not need to keep these interfaces, but this is **not recommended**. The evaluation model `GPT-5.4` is already one of the strongest coding models available.
 
 A recommended coding style is:
 
@@ -100,9 +73,9 @@ response = client.chat.completions.create(
 
 * Each student can have **at most one active task** at a time
 
-  * if you already have a running `/start` environment, you cannot `/submit2`
-  * if you already have a running `/submit2` task, you cannot start or submit again
-* Each student can submit before 5/19 8 am and need to submit **at least one time** before 5/12 8 am.
+  * if you already have a running `/start` environment, you cannot `/submit`
+  * if you already have a running `/submit` task, you cannot start or submit again
+* Each student can submit **at most two times** before 4/21 8 am.
 * Each submission can run for **at most 30 minutes**. Submissions exceeding this limit may be terminated automatically.
 * You may encounter API rate limiting or excessive request frequency sometimes, just wait for a short period before submitting again.
 
@@ -112,7 +85,7 @@ response = client.chat.completions.create(
 
 ```bash
 # linux or mac
-curl -X POST http://<server>:8080/submit2 \
+curl -X POST http://<server>:8080/submit \
   -H "Content-Type: application/json" \
   -d '{ "id": "23210240000", "gpu": 1 }'
 ```
@@ -142,6 +115,18 @@ Example response:
 
 Please keep the returned `output_file`.
 It is the identifier for checking your submit status.
+
+### Submit for test
+
+This submission entry is for testing purposes only. There is no limit on the number of submissions, and it uses the DeepSeek API. However, it also has an overall API token limit. So, please still use it sparingly.
+
+```bash
+# linux or mac
+curl -X POST http://<server>:8080/submit-test \
+  -H "Content-Type: application/json" \
+  -d '{ "id": "23210240000", "gpu": 1 }'
+```
+
 
 
 ### Check submit status
@@ -178,7 +163,7 @@ Example response:
 Open the following page in your browser:
 
 ```text
-http://<server>:8080/outputs2
+http://<server>:8080/outputs
 ```
 
 This page will show a simple list of all anonymous output files.
@@ -200,7 +185,7 @@ Your agent's standard output and standard error will be written to:
 # 3. make sure your agent reads /target/target_spec.json
 # 4. submit
 
-curl -X POST http://<server>:8080/submit2 \
+curl -X POST http://<server>:8080/submit \
   -H "Content-Type: application/json" \
   -d '{ "id": "23210240000", "gpu": 1 }'
 
@@ -208,7 +193,7 @@ curl -X POST http://<server>:8080/submit2 \
 curl http://<server>:8080/submit_status/<output_file>
 
 # 6. open outputs page in browser
-# http://<server>:8080/outputs2
+# http://<server>:8080/outputs
 ```
 
 # Submit Your Report
@@ -216,6 +201,6 @@ curl http://<server>:8080/submit_status/<output_file>
 You are required to submit a brief report describing the agent you have built, along with one **output ID** produced by your agent that you consider representative of its better performance. 
 
 ```bash
-/workspace/report2.* # No restriction on file format
-/workspace/output_id2.txt # Your output ID
+/workspace/report.* # No restriction on file format
+/workspace/output_id.txt # Your output ID
 ```
