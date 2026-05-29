@@ -1,221 +1,239 @@
-
 # !!! NOTICE !!!
 
 - The submission workflow is similar to Phase 1, but please note that the submission and output interfaces have changed:
 
-  * `/submit` -> `/submit2`
-  * `/outputs` -> `/outputs2`
+  * `/submit` -> `/submit3`
+  * `/outputs` -> `/outputs3`
   * `/submit_status` remains unchanged
 
 - No `/submit-test` is provided. You can use the deepseek api key in `/submit2` now, or just use your own api key. 
 
 - Your submission file name is also changed:
-  * `/workspace/report.*` -> `/workspace/report2.*`
-  * `/workspace/output_id.txt` -> `/workspace/output_id2.txt`
+  * `/workspace/report.*` -> `/workspace/report3.*`
+  * `/workspace/output_id.txt` -> `/workspace/output_id3.txt`
 
 
 - The evaluation system will run your agent first. After your agent finishes or times out, the system will collect the generated:
 
 ```bash
-/workspace/optimized_lora.cu
+/workspace/engine.py
 ```
 
-# Submit Your Agent
+- The evaluation system will automatically generate the `result.log` file for debug if your agent doesn't generate one. 
 
-Please follow the instructions in `gpu_service_guide.md` to upload your code to the server at `10.176.37.31`. This server may also be used for development, but if other servers still have available GPUs, please do not use this one for development for the time being.
+# Phase 3: Automated LLM Inference Runtime
 
+In this phase, you will build an automated LLM inference runtime that can load a decoder-only model from the provided configuration and weights, maintain request states, and execute both prefill and decode efficiently. The runtime will be evaluated as a black box: we will compare its logits against a reference implementation for correctness, and then drive it with serving-style request traces to measure throughput and memory behavior.
 
-If you have prepared your code in your workspace, you can use `/submit2` to run it in the evaluation container.
+The evaluation system will first run your `run.sh`. In this script, you may read the publicly provided model architecture and weights, and perform compilation, preparation, debugging, or self-testing. After that, the evaluation system will import your `engine.py` and call a fixed interface to test correctness and throughput.
 
-## Before you submit
+## What You Need to Read
 
-### 1. Files requirement
-
-Please make sure your workspace contains:
-
-* `run.sh`
-* all code and files needed by `run.sh`
-
-Your `run.sh` should be located at:
-
-```bash
-/workspace/run.sh
-```
-
-In general, our evaluation environment already includes common packages, including `openai` and the relevant profiling tools. If you need additional pip packages, you may install them in `run.sh` using the following command.
-
-```bash
-pip3 install <your_package> -i --default-timeout 0.3 https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple
-```
-
-Your agent must generate a cuda file and place it at 
-
-```bash
-/workspace/optimized_lora.cu
-```
-
-See the details about this output at https://memxlife.github.io/books/mlsys/project_phase2.html
-
-Your agent may generate a report file and place it at 
-```bash
-/workspace/output.*
-``` 
-This file is used to evaluate your agent's reasoning process and optimization methodology.
-The file format is not restricted.
-Only one such file should be generated.
-It may contain your agent's search process, candidate comparison, profiling results, benchmark logs, design choices, or final summary.
-
-
-### 2. Model/API interface requirement
-
-You may use **your own API key** for your agent.
-
-If you do not specify your own API configuration, the evaluation environment will provide a default DeepSeek API interface through environment variables.
-
-The following environment variables may be provided:
-
-* `API_KEY`
-* `BASE_MODEL`
-* `BASE_URL`
-
-
-A recommended coding style is:
-
-```python
-from openai import OpenAI
-import os
-
-client = OpenAI(
-    api_key=os.getenv("API_KEY", ""),
-    base_url=os.getenv("BASE_URL", "")
-)
-
-response = client.chat.completions.create(
-    model=os.getenv("BASE_MODEL", ""),
-    messages=[{"role": "user", "content": prompt}]
-)
-```
-
-### 3. Rules
-
-* Each student can have **at most one active task** at a time
-
-  * if you already have a running `/start` environment, you cannot `/submit2`
-  * if you already have a running `/submit2` task, you cannot start or submit again
-* Each student can submit before 5/19 8 am and need to submit **at least one time** before 5/12 8 am.
-* Each submission can run for **at most 30 minutes**. Submissions exceeding this limit may be terminated automatically.
-* You may encounter API rate limiting or excessive request frequency sometimes, just wait for a short period before submitting again.
-
-
-
-## Submit
-
-```bash
-# linux or mac
-curl -X POST http://<server>:8080/submit2 \
-  -H "Content-Type: application/json" \
-  -d '{ "id": "23210240000", "gpu": 1 }'
-```
-
-Parameters:
-
-* `id`: your student ID
-* `gpu`:
-  * `1` means submit with a GPU (needed)
-
-
-Example response:
-
-```json
-{
-  "ok": true,
-  "user_id": "23210240000",
-  "status": "running",
-  "require_gpu": true,
-  "gpu_id": 0,
-  "output_file": "xxx",
-  "submit_count": 0,
-  "submit_limit": 2,
-  "remaining_submit_count": 2
-}
-```
-
-Please keep the returned `output_file`.
-It is the identifier for checking your submit status.
-
-
-### Check submit status
-
-```bash
-curl http://<server>:8080/submit_status/<output_file>
-```
-
-Possible status values include:
-
-* `running`
-* `succeeded`
-* `failed`
-* `killed`
-
-Example response:
-
-```json
-{
-  "ok": true,
-  "output_file": "7f3d6d3b0d4f0b2f7a6d6d43b4b9fabc",
-  "status": "succeeded",
-  "gpu_id": 0,
-  "started_at": 1713123456, 
-  "finished_at": 1713123510, // null if not finished
-  "submit_count": 1,
-  "submit_limit": 2,
-  "remaining_submit_count": 1
-}
-```
-
-## View and download outputs
-
-Open the following page in your browser:
+The model configuration file is:
 
 ```text
-http://<server>:8080/outputs2
+/target/model_config.json
 ```
 
-This page will show a simple list of all anonymous output files.
-You can click any link to download the corresponding file directly.
+In the public example, the corresponding file is:
 
-Download your output file with your output ID.
-Or you can check your output file Locally by start your container.
-
-Your agent's standard output and standard error will be written to:
-```bash
-/workspace/results.log
-````
-
-## Minimal example workflow
-
-```bash
-# 1. upload your code to /workspace
-# 2. make sure /workspace/run.sh exists
-# 3. make sure your agent reads /target/target_spec.json
-# 4. submit
-
-curl -X POST http://<server>:8080/submit2 \
-  -H "Content-Type: application/json" \
-  -d '{ "id": "23210240000", "gpu": 1 }'
-
-# 5. check status
-curl http://<server>:8080/submit_status/<output_file>
-
-# 6. open outputs page in browser
-# http://<server>:8080/outputs2
+```text
+target/model_config.json
 ```
 
-# Submit Your Report
+It describes the number of layers, hidden size, number of heads, vocabulary size, and other model information. Your `engine.py` should not hard-code these values. Instead, it should dynamically construct the runtime using the `model_config` passed into `create_engine(model_config, weight_dir, device)`.
 
-You are required to submit a brief report describing the agent you have built, along with one **output ID** produced by your agent that you consider representative of its better performance. 
+The model weights directory is:
+
+```text
+/target/weights
+```
+
+In the public example, it contains:
+
+```text
+target/weights/model.pt
+```
+
+During the hidden evaluation, the hidden weights will be placed at the location specified by the evaluation system. The evaluation traces will not be provided in advance. Your runtime should work under different batch sizes, prompt lengths, decode lengths, and request orders.
+
+## What You Need to Provide
+
+After your `run.sh` finishes, the following file must exist:
+
+```text
+/workspace/engine.py
+```
+
+In the public example, the corresponding file is:
+
+```text
+workspace/engine.py
+```
+
+Your agent should also generate a reasoning output:
+
+```text
+/workspace/output3.*
+```
+
+## Required Interface in `engine.py`
+
+`engine.py` must contain:
+
+```python
+def create_engine(model_config: dict, weight_dir: str, device: str = "cuda"):
+    return Engine(...)
+```
+
+The returned object must support:
+
+```python
+class Engine:
+    def prefill(self, request_ids, input_ids):
+        ...
+
+    def decode(self, request_ids, token_ids):
+        ...
+
+    def remove(self, request_ids):
+        ...
+```
+
+Inputs to `prefill()`:
+
+- `request_ids: list(int)` A list of request IDs.
+- `input_ids: list(torch.Tensor)` A list of token sequences, where each element is a one-dimensional tensor with `dtype=torch.long`.
+
+Return of `prefill()`:
+
+- `Torch.tensor` Logits with shape `[batch_size, vocab_size]`, where the `batch_size = len(request_ids)`. The i-th row corresponds to the logits of the last token for `request_ids[i]`.
+
+Inputs to `decode()`:
+
+- `request_ids: list(int)` A list of request IDs that have already been prefilled.
+- `token_ids: torch.Tensor`: a one-dimensional tensor with shape `[batch_size]`, representing one newly appended token for each request.
+
+Return of `decode()`:
+
+- `torch.Tensor` Logits with shape `[batch_size, vocab_size]`. The `i`-th row corresponds to the logits of the last token after appending `token_ids[i]` to `request_ids[i]`.
+
+Input to `remove()`:
+
+- `request_ids: list(int)`: a list of request IDs to terminate.
+
+`remove()` does not need to return anything, but it must release or delete the KV cache / request state associated with these requests.
+
+## How Correctness Is Tested
+
+The evaluation system will provide an official PyTorch reference model. It will load the same hidden weights and compute reference logits for the same batch of requests.
+
+We do not score based on the final generated text, because sampling strategies introduce unnecessary uncertainty. Instead, we compare logits.
+
+The comparison rule is:
+
+$$
+|y_{\mathrm{student}} - y_{\mathrm{ref}}| \leq \mathrm{atol} + \mathrm{rtol} \cdot |y_{\mathrm{ref}}|
+$$
+
+In the public example, the default values are:
+
+$$
+\mathrm{atol}=10^{-2}, \quad \mathrm{rtol}=10^{-2}
+$$
+
+That is, we use:
+
+```python
+torch.allclose(student_logits, ref_logits, atol=1e-2, rtol=1e-2)
+```
+
+The correctness tests cover:
+
+- Single-request prefill.
+- Single-request decode.
+- Multi-request prefill.
+- Multi-request decode.
+- Inserting new requests.
+- Continuing to decode other requests after some requests are removed.
+
+If correctness fails for a case, the performance score for that case will be 0.
+
+## How Throughput Is Tested
+
+The throughput test is driven by the evaluation system. The evaluation system will import `engine.py`, construct the engine, and then run a fixed trace:
+
+```python
+engine = create_engine(model_config, weight_dir, device)
+engine.prefill(...)
+engine.decode(...)
+engine.remove(...)
+```
+
+The timed region only includes the `prefill()`, `decode()`, and `remove()` calls in the trace. It does not include `create_engine()` or weight loading time.
+
+Throughput is defined as:
+
+$$
+\mathrm{tokens/s}=\frac{\mathrm{prefill\ tokens}+\mathrm{decode\ tokens}}{\mathrm{elapsed\ seconds}}
+$$
+
+Decode throughput is defined as:
+
+$$
+\mathrm{decode\ tokens/s}=\frac{\mathrm{decode\ tokens}}{\mathrm{elapsed\ seconds}}
+$$
+
+The public example provides three types of benchmarks:
+
+- `prefill`: batched prefill with long prompts.
+- `decode`: continuous decode with multiple requests.
+- `mixed`: mixed traces containing prefill, decode, and remove operations.
+
+The hidden evaluation will use the same testing method, but will replace the model size, weights, batch size, prompt length, decode steps, and traces.
+
+## How to Run the Public Example
+
+If the weight file does not exist, first generate toy weights:
 
 ```bash
-/workspace/report2.* # No restriction on file format
-/workspace/output_id2.txt # Your output ID
+python3 scripts/generate_toy_weights.py \
+  --config target/model_config.json \
+  --output target/weights/model.pt
 ```
+
+Run the correctness test:
+
+```bash
+python3 evaluator/test_correctness.py \
+  --engine workspace/engine.py \
+  --model-config target/model_config.json \
+  --weight-dir target/weights \
+  --device auto
+```
+
+Run the throughput test:
+
+```bash
+python3 evaluator/benchmark_throughput.py \
+  --engine workspace/engine.py \
+  --model-config target/model_config.json \
+  --weight-dir target/weights \
+  --device auto
+```
+
+You can also directly run:
+
+```bash
+bash scripts/run_public_tests.sh
+```
+
+If the default `python3` does not have PyTorch installed, you can specify the interpreter:
+
+```bash
+PYTHON=/path/to/python-with-torch bash scripts/run_public_tests.sh
+```
+
+## Baseline Description
+
+The `workspace/engine.py` in the public example is a minimal PyTorch baseline. It stores the full token sequence for each request and reruns the entire sequence on every `decode()` call. Therefore, it is very slow, but its interface semantics are correct.
